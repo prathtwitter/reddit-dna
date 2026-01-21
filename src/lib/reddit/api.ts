@@ -81,9 +81,10 @@ export async function fetchRedditPosts(
   try {
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'RedditDNA/1.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
       },
-      next: { revalidate: 60 }, // Cache for 1 minute
+      cache: 'no-store',
     });
 
     if (!response.ok) {
@@ -138,8 +139,10 @@ export async function fetchPostComments(
   try {
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'RedditDNA/1.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
       },
+      cache: 'no-store',
     });
 
     if (!response.ok) {
