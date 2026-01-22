@@ -10,9 +10,77 @@ import { RedditPost, RedditComment } from '@/types';
 import { VISIBLE_CARDS, INITIAL_DOSSIER_THRESHOLD, REFINEMENT_DOSSIER_INTERVAL } from '@/lib/utils';
 
 const SUBREDDITS = [
-  'technology', 'science', 'worldnews', 'programming', 'philosophy',
-  'books', 'history', 'space', 'futurology', 'economics',
-  'psychology', 'todayilearned', 'explainlikeimfive', 'askscience'
+  // Meta-Cognition & Learning
+  'productivity', 'GetStudying', 'Anki', 'selfimprovement', 'DecisionMaking',
+
+  // Logic & Critical Thinking
+  'philosophy', 'logic', 'changemyview', 'TrueAskReddit', 'DebateAnAtheist',
+
+  // Mental Models & Rationality
+  'slatestarcodex', 'lesswrong', 'RationalPsychonaut', 'Foodforthought',
+
+  // Psychology & Neuroscience
+  'psychology', 'Stoicism', 'CBT', 'Meditation', 'neuroscience', 'cogsci',
+
+  // Macro-Economics & Finance
+  'economics', 'finance', 'AskEconomics', 'neutralnews', 'TrueReddit',
+
+  // Trading & Markets
+  'wallstreetbets', 'options', 'algotrading', 'SecurityAnalysis', 'investing',
+  'stocks', 'CryptoCurrency', 'Bitcoin', 'ValueInvesting',
+
+  // Personal Finance & Wealth
+  'personalfinance', 'financialindependence', 'realestateinvesting', 'tax',
+  'smallbusiness', 'Entrepreneur', 'fatFIRE',
+
+  // Legal
+  'law', 'Ask_Lawyers', 'LegalAdviceOffTopic',
+
+  // Social Engineering & Persuasion
+  'socialengineering', 'negotiation', 'sales', 'PublicSpeaking',
+
+  // Sociology & Anthropology
+  'sociology', 'Anthropology', 'AskSocialScience', 'AskAnthropology',
+
+  // Computer Science & Programming
+  'programming', 'compsci', 'netsec', 'cybersecurity', 'hacking', 'OSINT',
+  'learnprogramming', 'AskProgramming', 'ReverseEngineering', 'algorithms',
+
+  // Artificial Intelligence
+  'MachineLearning', 'artificial', 'LocalLLaMA', 'singularity', 'agi',
+  'ChatGPT', 'ClaudeAI', 'StableDiffusion',
+
+  // Hardware & Networking
+  'buildapc', 'homelab', 'networking', 'selfhosted', 'HomeAssistant',
+  'sysadmin', 'DataHoarder', 'PFSENSE', 'docker',
+
+  // Bio-Optimization & Health
+  'nutrition', 'fitness', 'Supplements', 'Nootropics', 'biohackers',
+  'sleep', 'AdvancedFitness', 'loseit', 'ketoscience',
+
+  // Survival & Tactics
+  'survival', 'preppers', 'Bushcraft', 'urbancarliving', 'bugout',
+  'SelfDefense', 'martialarts', 'CCW',
+
+  // Maker Skills & DIY
+  'DIY', 'electronics', 'MechanicAdvice', 'Cooking', 'woodworking',
+  'AskElectronics', 'metalworking', 'sewing', 'Skookum',
+
+  // Geopolitics & Strategy
+  'geopolitics', 'CredibleDefense', 'WarCollege', 'NuclearPower', 'energy',
+  'foreignpolicy', 'Intelligence', 'LessCredibleDefence',
+
+  // History & Philosophy
+  'history', 'AskHistorians', 'badhistory', 'HistoryPorn',
+  'PoliticalPhilosophy', 'askphilosophy', 'HistoryWhatIf',
+
+  // Information Warfare & Privacy
+  'privacy', 'opsec', 'privacytoolsIO', 'degoogle', 'Piracy',
+  'lockpicking', 'homesecurity', 'antivirus',
+
+  // General Knowledge
+  'todayilearned', 'explainlikeimfive', 'askscience', 'AskEngineers',
+  'technology', 'science', 'worldnews', 'space', 'futurology', 'Documentaries'
 ];
 
 function decodeHtmlEntities(text: string): string {
@@ -154,13 +222,13 @@ export function SwipeStack() {
       const serverSeenIds = new Set<string>(seenData.seenIds || []);
       setSeenIds(serverSeenIds);
 
-      // Fetch from random subreddits
+      // Fetch from random subreddits (sample 12 from the large pool)
       const shuffled = [...SUBREDDITS].sort(() => Math.random() - 0.5);
-      const selectedSubs = shuffled.slice(0, 5);
+      const selectedSubs = shuffled.slice(0, 12);
 
       const results = await Promise.all([
-        ...selectedSubs.map(sub => fetchRedditPosts(sub, 10)),
-        fetchRedditPosts('all', 20),
+        ...selectedSubs.map(sub => fetchRedditPosts(sub, 8)),
+        fetchRedditPosts('all', 15),
       ]);
 
       const allPosts = results.flat();
