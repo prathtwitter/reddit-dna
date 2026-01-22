@@ -29,8 +29,10 @@ function decodeHtmlEntities(text: string): string {
 
 async function fetchRedditPosts(subreddit: string, limit: number = 25): Promise<RedditPost[]> {
   try {
+    // Use corsproxy.io to bypass CORS restrictions
+    const redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`;
     const response = await fetch(
-      `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
+      `https://corsproxy.io/?${encodeURIComponent(redditUrl)}`,
       { cache: 'no-store' }
     );
     if (!response.ok) return [];
@@ -96,8 +98,9 @@ export function SwipeStack() {
 
     setLoadingComments(redditId);
     try {
+      const redditUrl = `https://www.reddit.com${permalink}.json?limit=3&depth=1`;
       const response = await fetch(
-        `https://www.reddit.com${permalink}.json?limit=3&depth=1`,
+        `https://corsproxy.io/?${encodeURIComponent(redditUrl)}`,
         { cache: 'no-store' }
       );
       if (!response.ok) throw new Error('Failed to fetch comments');
