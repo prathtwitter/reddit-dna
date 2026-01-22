@@ -83,6 +83,33 @@ const SUBREDDITS = [
   'technology', 'science', 'worldnews', 'space', 'futurology', 'Documentaries'
 ];
 
+// Multiple CORS proxies for fallback reliability
+const CORS_PROXIES = [
+  (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
+
+// Try fetching through multiple proxies until one works
+async function fetchWithFallback(url: string): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (const proxyFn of CORS_PROXIES) {
+    try {
+      const proxyUrl = proxyFn(url);
+      const response = await fetch(proxyUrl, { cache: 'no-store' });
+      if (response.ok) {
+        return response;
+      }
+    } catch (err) {
+      lastError = err as Error;
+      console.warn(`Proxy failed, trying next...`);
+    }
+  }
+
+  throw lastError || new Error('All CORS proxies failed');
+}
+
 function decodeHtmlEntities(text: string): string {
   if (!text) return '';
   return text
@@ -97,13 +124,8 @@ function decodeHtmlEntities(text: string): string {
 
 async function fetchRedditPosts(subreddit: string, limit: number = 25): Promise<RedditPost[]> {
   try {
-    // Use corsproxy.io to bypass CORS restrictions
     const redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`;
-    const response = await fetch(
-      `https://corsproxy.io/?${encodeURIComponent(redditUrl)}`,
-      { cache: 'no-store' }
-    );
-    if (!response.ok) return [];
+    const response = await fetchWithFallback(redditUrl);
     const data = await response.json();
 
     return data.data.children
@@ -167,11 +189,7 @@ export function SwipeStack() {
     setLoadingComments(redditId);
     try {
       const redditUrl = `https://www.reddit.com${permalink}.json?limit=3&depth=1`;
-      const response = await fetch(
-        `https://corsproxy.io/?${encodeURIComponent(redditUrl)}`,
-        { cache: 'no-store' }
-      );
-      if (!response.ok) throw new Error('Failed to fetch comments');
+      const response = await fetchWithFallback(redditUrl);
       const data = await response.json();
 
       const comments: RedditComment[] = (data[1]?.data?.children || [])
