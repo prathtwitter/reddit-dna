@@ -2,12 +2,69 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { ThumbsUp, ThumbsDown, Heart, X } from 'lucide-react';
+import { Heart, X } from 'lucide-react';
 import { SwipeCard } from './SwipeCard';
 import { Button, GlassPanel, Spinner, MonoText } from '@/components/ui';
 import { useSwipeStore } from '@/stores';
-import { RedditComment } from '@/types';
+import { RedditPost, RedditComment } from '@/types';
 import { VISIBLE_CARDS, INITIAL_DOSSIER_THRESHOLD, REFINEMENT_DOSSIER_INTERVAL } from '@/lib/utils';
+
+const SUBREDDITS = [
+  'technology', 'science', 'worldnews', 'programming', 'philosophy',
+  'books', 'history', 'space', 'futurology', 'economics',
+  'psychology', 'todayilearned', 'explainlikeimfive', 'askscience'
+];
+
+function decodeHtmlEntities(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+async function fetchRedditPosts(subreddit: string, limit: number = 25): Promise<RedditPost[]> {
+  try {
+    const response = await fetch(
+      `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
+      { cache: 'no-store' }
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+
+    return data.data.children
+      .filter((child: { data: { title: string } }) =>
+        child.data.title.length > 10 && !child.data.title.toLowerCase().includes('[removed]')
+      )
+      .map((child: { data: Record<string, unknown> }) => ({
+        id: child.data.id as string,
+        reddit_id: child.data.name as string,
+        title: decodeHtmlEntities(child.data.title as string),
+        selftext: decodeHtmlEntities((child.data.selftext as string) || ''),
+        subreddit: child.data.subreddit as string,
+        subreddit_name_prefixed: child.data.subreddit_name_prefixed as string,
+        author: child.data.author as string,
+        score: child.data.score as number,
+        upvote_ratio: child.data.upvote_ratio as number,
+        num_comments: child.data.num_comments as number,
+        url: child.data.url as string,
+        permalink: child.data.permalink as string,
+        created_utc: child.data.created_utc as number,
+        is_self: child.data.is_self as boolean,
+        thumbnail: child.data.thumbnail as string,
+        preview: child.data.preview as RedditPost['preview'],
+        post_hint: child.data.post_hint as string,
+        link_flair_text: child.data.link_flair_text as string,
+      }));
+  } catch (error) {
+    console.error(`Failed to fetch r/${subreddit}:`, error);
+    return [];
+  }
+}
 
 export function SwipeStack() {
   const {
@@ -28,6 +85,7 @@ export function SwipeStack() {
 
   const [commentsCache, setCommentsCache] = useState<Record<string, RedditComment[]>>({});
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
 
   const visibleCards = getVisibleCards();
   const currentCard = visibleCards[0];
@@ -38,15 +96,25 @@ export function SwipeStack() {
 
     setLoadingComments(redditId);
     try {
-      const response = await fetch(`/api/reddit/comments?permalink=${encodeURIComponent(permalink)}`);
+      const response = await fetch(
+        `https://www.reddit.com${permalink}.json?limit=3&depth=1`,
+        { cache: 'no-store' }
+      );
+      if (!response.ok) throw new Error('Failed to fetch comments');
       const data = await response.json();
 
-      if (data.comments) {
-        setCommentsCache(prev => ({
-          ...prev,
-          [redditId]: data.comments,
+      const comments: RedditComment[] = (data[1]?.data?.children || [])
+        .filter((child: { kind: string }) => child.kind === 't1')
+        .slice(0, 3)
+        .map((child: { data: Record<string, unknown> }) => ({
+          id: child.data.id as string,
+          body: decodeHtmlEntities(child.data.body as string),
+          author: child.data.author as string,
+          score: child.data.score as number,
+          created_utc: child.data.created_utc as number,
         }));
-      }
+
+      setCommentsCache(prev => ({ ...prev, [redditId]: comments }));
     } catch (err) {
       console.error('Failed to fetch comments:', err);
     } finally {
@@ -69,7 +137,7 @@ export function SwipeStack() {
     }
   }, [visibleCards, commentsCache, fetchComments]);
 
-  // Fetch more posts when needed
+  // Fetch posts from Reddit (client-side)
   const fetchMorePosts = useCallback(async () => {
     if (isLoading) return;
 
@@ -77,20 +145,45 @@ export function SwipeStack() {
     setError(null);
 
     try {
-      const response = await fetch('/api/reddit/fetch');
-      const data = await response.json();
+      // Get seen IDs from server
+      const seenResponse = await fetch('/api/reddit/fetch');
+      const seenData = await seenResponse.json();
+      const serverSeenIds = new Set<string>(seenData.seenIds || []);
+      setSeenIds(serverSeenIds);
 
-      if (data.error) {
-        setError(data.error);
-      } else if (data.posts) {
-        addCards(data.posts);
+      // Fetch from random subreddits
+      const shuffled = [...SUBREDDITS].sort(() => Math.random() - 0.5);
+      const selectedSubs = shuffled.slice(0, 5);
+
+      const results = await Promise.all([
+        ...selectedSubs.map(sub => fetchRedditPosts(sub, 10)),
+        fetchRedditPosts('all', 20),
+      ]);
+
+      const allPosts = results.flat();
+
+      // Filter out seen posts
+      const freshPosts = allPosts.filter(
+        post => !serverSeenIds.has(post.reddit_id) && !seenIds.has(post.reddit_id)
+      );
+
+      // Deduplicate and shuffle
+      const uniquePosts = Array.from(
+        new Map(freshPosts.map(p => [p.reddit_id, p])).values()
+      ).sort(() => Math.random() - 0.5);
+
+      if (uniquePosts.length > 0) {
+        addCards(uniquePosts);
+      } else {
+        setError('No new posts available');
       }
     } catch (err) {
       setError('Failed to fetch posts');
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [isLoading, setLoading, setError, addCards]);
+  }, [isLoading, setLoading, setError, addCards, seenIds]);
 
   // Initial load
   useEffect(() => {
@@ -111,7 +204,6 @@ export function SwipeStack() {
     const swipedCard = swipeCard(action);
 
     if (swipedCard) {
-      // Record swipe to database
       try {
         await fetch('/api/swipe', {
           method: 'POST',
@@ -131,7 +223,6 @@ export function SwipeStack() {
     }
   }, [swipeCard]);
 
-  // Calculate progress to next dossier
   const nextDossierAt = totalSwipes < INITIAL_DOSSIER_THRESHOLD
     ? INITIAL_DOSSIER_THRESHOLD
     : Math.ceil((totalSwipes - INITIAL_DOSSIER_THRESHOLD) / REFINEMENT_DOSSIER_INTERVAL + 1) *
@@ -169,7 +260,6 @@ export function SwipeStack() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Stats Bar */}
       <div className="flex items-center justify-between px-2">
         <div className="flex items-center gap-6">
           <div className="text-center">
@@ -204,7 +294,6 @@ export function SwipeStack() {
         </div>
       </div>
 
-      {/* Card Stack */}
       <div className="relative w-full h-[550px]">
         <AnimatePresence mode="popLayout">
           {visibleCards.slice(0, VISIBLE_CARDS).reverse().map((post, index) => {
@@ -221,7 +310,6 @@ export function SwipeStack() {
           })}
         </AnimatePresence>
 
-        {/* Loading Comments Indicator */}
         {loadingComments && loadingComments === currentCard?.reddit_id && (
           <div className="absolute top-4 right-4 z-20 px-3 py-1 rounded-full bg-background/80 backdrop-blur-sm flex items-center gap-2">
             <Spinner size="sm" />
@@ -230,7 +318,6 @@ export function SwipeStack() {
         )}
       </div>
 
-      {/* Action Buttons */}
       <div className="flex items-center justify-center gap-6">
         <Button
           variant="secondary"
@@ -250,7 +337,6 @@ export function SwipeStack() {
         </Button>
       </div>
 
-      {/* Keyboard hint */}
       <div className="text-center">
         <MonoText muted className="text-xs">
           Drag card or use keyboard: ← Skip | → Like
